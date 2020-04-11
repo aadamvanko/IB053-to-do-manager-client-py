@@ -1,34 +1,10 @@
 import jsons
 import requests
 import typing
-from dataclasses import dataclass
+
+from models import *
 
 api_url = "http://localhost:8080"
-
-@dataclass
-class LoginResponseDTO:
-    loggedIn: bool
-    
-@dataclass
-class User:
-    id: int
-    name: str
-    surname: str
-    username: str
-
-@dataclass
-class Task:
-    id: int
-    estimatedFinishTime: int
-    orderIndex: int
-    owner: User
-    prerequisites: typing.List['Task']
-
-@dataclass
-class NewTaskDTO:
-    estimatedFinishTime: int
-    orderIndex: int
-    prerequisites: typing.List['Task']
 
 @dataclass
 class Credentials:
@@ -91,6 +67,8 @@ class Client:
         prerequisites = self._getPrerequisitesList()
         newTaskDTO = NewTaskDTO(estimatedFinishTime, orderIndex, prerequisites)
         response = self._makeRequest('post', f"{api_url}/tasks", jsons.dumps(newTaskDTO), {"content-type": "application/json"})
+        print("Added task")
+        print(jsons.loadb(response.content))
         #print(response.content)
 
     def _changeTask(self):
@@ -114,9 +92,7 @@ class Client:
         print(f"Total time is {totalTime}")
 
     def _printMenu(self):
-        print("Options:")
-        for option in self.options:
-            print(option)
+        print(f"Options: {', '.join(self.options.keys())}")
 
     def _getOption(self):
         option = ""
@@ -143,5 +119,5 @@ class Client:
                 break
             self.options[option]()
         
-
-Client().run()
+if __name__ == "__main__":
+    Client().run()
