@@ -3,46 +3,40 @@ import requests
 import typing
 
 from models import *
+from task_service import TaskService
 
-api_url = "http://localhost:8080"
 
 @dataclass
 class Credentials:
     username: str
     password: str
 
+
 class Client:
     def __init__(self):
+        self.taskService = TaskService()
         self.credentials = Credentials("joe", "pass")
         self.loggedIn = False
         self.options = { 
             "login": self._login, 
             "getTasks": self._printTasks, 
-            "addTask": self._addTask, "changeTask":self._changeTask, "deleteTask": self._deleteTask, 
+            "addTask": self._addTask,
+            "changeTask":self._changeTask,
+            "deleteTask": self._deleteTask, 
             "getTotalTime": self._getTotalTime,
             "exit": None
         }
 
-    def _makeRequest(self, method, url, data="", headers={}):
-        methods = { 'get': requests.get, 'post': requests.post, 'put': requests.put, 'delete': requests.delete }
-        method = methods[method]
-        response = method(url, data=data, headers={ **{ "username":self.credentials.username, "password":self.credentials.password }, **headers })
-        return response
-
     def _login(self):
-        loginResponseDTO = LoginResponseDTO(False)
-        while not loginResponseDTO.loggedIn:
+        loggedIn = False
+        while not loggedIn:
             self.credentials.username = input("Enter username:")
             self.credentials.password = input("Enter password:")
-            response = self._makeRequest("post", f"{api_url}/login")
-            #print(response.content)
-            loginResponseDTO = jsons.loadb(response.content, cls=LoginResponseDTO)
+            loggedIn = self.taskService.login(self.credentials)
         print("Logged in as", self.credentials.username)
 
     def _getTasksList(self):
-        response = self._makeRequest('get', f"{api_url}/tasks")
-        tasks = jsons.loadb(response.content, typing.List[Task])
-        return tasks
+       return self.taskService.getTasks(self.credentials)
 
     def _printTasks(self):
         for task in self._getTasksList():
@@ -62,34 +56,30 @@ class Client:
         return list(tasks)
 
     def _addTask(self):
-        estimatedFinishTime = input('Enter estimated finish time in minutes: ')
-        orderIndex = input('Enter ordering index: ')
+        estimatedFinishTime = int(input('Enter estimated finish time in minutes: '))
+        orderIndex = int(input('Enter ordering index: '))
         prerequisites = self._getPrerequisitesList()
         newTaskDTO = NewTaskDTO(estimatedFinishTime, orderIndex, prerequisites)
-        response = self._makeRequest('post', f"{api_url}/tasks", jsons.dumps(newTaskDTO), {"content-type": "application/json"})
-        print("Added task")
-        print(jsons.loadb(response.content))
-        #print(response.content)
+        addedTask = self.taskService.addTask(self.credentials, newTaskDTO)
+        print(f"Task added, id={addedTask.id}")
 
     def _changeTask(self):
         id = int(input("Enter id of the task you want to edit: "))
         existingTasks = self._getTasksList()
         task = list(filter(lambda task: task.id == id, existingTasks))[0]
-        task.estimatedFinishTime = input('Enter estimated finish time in minutes: ')
-        task.orderIndex = input('Enter ordering index: ')
+        task.estimatedFinishTime = int(input('Enter estimated finish time in minutes: '))
+        task.orderIndex = int(input('Enter ordering index: '))
         task.prerequisites = self._getPrerequisitesList()
-        response = self._makeRequest("put", f"{api_url}/tasks/{id}", jsons.dumps(task), {"content-type": "application/json"})
-        #print(response.content)
+        changed = self.taskService.changeTask(self.credentials, task)
+        print(f"Task with id={id} was {'' if changed else 'NOT'} changed.")
 
     def _deleteTask(self):
-        task_id = input("Enter id of the task to delete: ")
-        response = self._makeRequest("delete", f"{api_url}/tasks/{task_id}")
-        print(f"Task with id={task_id} was {'successfully' if response.status_code == 200 else 'not' } deleted")
+        id = input("Enter id of the task to delete: ")
+        deleted = self.taskService.deleteTask(self.credentials, id)
+        print(f"Task with id={id} was{'' if deleted else ' NOT' } deleted")
 
     def _getTotalTime(self):
-        response = self._makeRequest("get", f"{api_url}/tasks/total_time")
-        totalTime = jsons.loadb(response.content, int)
-        print(f"Total time is {totalTime}")
+        print(f"Total time is {self.taskService.getTotalTime(self.credentials)}")
 
     def _printMenu(self):
         print(f"Options: {', '.join(self.options.keys())}")
@@ -100,24 +90,21 @@ class Client:
             option = input("Enter option:")
         return option
 
+    def _executeOption(self, option):
+        try:
+            self.options[option]()
+        except requests.ConnectionError:
+            print("Please check your internet connection and try again")
+
     def run(self):
-        """
-        self._login()
-        self._printTasks()
-        self._getTotalTime()
-        self._deleteTask()
-        self._addTask()
-        self._changeTask()
-        self._printTasks()
-        """
-        
+        print("Use username joe and password pass")
         self._login()
         while True:
             self._printMenu()
             option = self._getOption()
             if option == "exit":
                 break
-            self.options[option]()
+            self._executeOption(option)
         
 if __name__ == "__main__":
     Client().run()
